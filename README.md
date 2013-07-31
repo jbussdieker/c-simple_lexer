@@ -1,5 +1,7 @@
 # Simple C Lexer
 
+[![Build Status](https://travis-ci.org/jbussdieker/c-simple_lexer.png?branch=master)](https://travis-ci.org/jbussdieker/c-simple_lexer)
+
 Reads a comma separated fields from an input a returns each element.
 
 # Usage
