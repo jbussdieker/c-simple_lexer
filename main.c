@@ -96,8 +96,30 @@ int run_enum_fields_test(const char *example, const char **expect, int count) {
     return 0;
 }
 
+void print_special(const char *msg) {
+    printf("\033[1;30m%s\033[00m", msg);
+}
+
+void print_literal(const char *msg) {
+    printf("\033[1;31m%s\033[00m", msg);
+}
+
 int run_test(const char *example, const char **expect, int count) {
-    printf("Testing (%s)\n", example);
+    printf("Testing (");
+    print_special("\"");
+    print_literal(example);
+    print_special("\"");
+    printf(") => [");
+
+    int i;
+    for (i = 0; i < count; i++) {
+	if (i > 0)
+	    printf(",");
+	print_special("\"");
+	print_literal(expect[i]);
+	print_special("\"");
+    }
+    printf("]\n");
 
     if (run_enum_fields_test(example, expect, count)) {
 	printf("[\033[0;31mFAIL\033[00m]\n");
@@ -111,8 +133,14 @@ int run_test(const char *example, const char **expect, int count) {
 int main(int argc, char **argv) {
     int result = 0;
 
+    result |= run_test("a", (const char*[]){"a"}, 1);
+    result |= run_test(" a ", (const char*[]){"a"}, 1);
+
     result |= run_test("a,b", (const char*[]){"a","b"}, 2);
+    result |= run_test(" a,b ", (const char*[]){"a","b"}, 2);
     result |= run_test(",a,b,", (const char*[]){"a","b"}, 2);
+    result |= run_test(" ,a,b, ", (const char*[]){"a","b"}, 2);
+
     result |= run_test("hello world, it's me", (const char*[]){"hello world","it's me"}, 2);
     result |= run_test(" the quick brown fox ", (const char*[]){"the quick brown fox"}, 1);
     result |= run_test(" the,quick ,brown, fox ", (const char*[]){"the","quick","brown","fox"}, 4);
