@@ -1,2 +1,2 @@
 ---
-script: 'make check'
+script: 'make travis'
