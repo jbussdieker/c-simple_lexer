@@ -4,16 +4,14 @@
 int enum_fields(const char *fv, const char **m, int *s) {
     const char *f, *b;
     enum state {
-	start = 1,
+	start,
 	skip_space,
 	scan,
 	scan_quote,
 	scan_back,
 	done,
 	end
-    } cur_state;
-
-    cur_state = start;
+    } cur_state = start;
 
     do {
 	switch (cur_state) {
@@ -100,27 +98,33 @@ int run_enum_fields_test(const char *example, const char **expect, int count) {
 
 int run_test(const char *example, const char **expect, int count) {
     printf("Testing (%s)\n", example);
+
     if (run_enum_fields_test(example, expect, count)) {
 	printf("[\033[0;31mFAIL\033[00m]\n");
+	return 1;
     } else {
 	printf("[\033[0;32mPASS\033[00m]\n");
+	return 0;
     }
 }
 
 int main(int argc, char **argv) {
-    run_test("a,b", (const char*[]){"a","b"}, 2);
-    run_test(",a,b,", (const char*[]){"a","b"}, 2);
-    run_test("hello world, it's me", (const char*[]){"hello world","it's me"}, 2);
-    run_test(" the quick brown fox ", (const char*[]){"the quick brown fox"}, 1);
-    run_test(" the,quick ,brown, fox ", (const char*[]){"the","quick","brown","fox"}, 4);
-    run_test("the,quick,brown,fox", (const char*[]){"the","quick","brown","fox"}, 4);
-    run_test("the , quick, brown ,fox", (const char*[]){"the","quick","brown","fox"}, 4);
-    run_test("the , , , quick, brown ,fox", (const char*[]){"the","quick","brown","fox"}, 4);
-    run_test("a,\"b,c\"", (const char*[]){"a","\"b,c\""}, 2);
-    run_test("a=\"b,c\"", (const char*[]){"a=\"b,c\""}, 1);
-    run_test("\"a", (const char*[]){"\"a"}, 1);
-    run_test("a\"", (const char*[]){"a\""}, 1);
-    run_test("a \"escape\\\"qu,ote\"", (const char*[]){"a \"escape\\\"qu,ote\""}, 1);
-    run_test("a \"escape\\", (const char*[]){"a \"escape\\"}, 1);
-    return 0;
+    int result = 0;
+
+    result |= run_test("a,b", (const char*[]){"a","b"}, 2);
+    result |= run_test(",a,b,", (const char*[]){"a","b"}, 2);
+    result |= run_test("hello world, it's me", (const char*[]){"hello world","it's me"}, 2);
+    result |= run_test(" the quick brown fox ", (const char*[]){"the quick brown fox"}, 1);
+    result |= run_test(" the,quick ,brown, fox ", (const char*[]){"the","quick","brown","fox"}, 4);
+    result |= run_test("the,quick,brown,fox", (const char*[]){"the","quick","brown","fox"}, 4);
+    result |= run_test("the , quick, brown ,fox", (const char*[]){"the","quick","brown","fox"}, 4);
+    result |= run_test("the , , , quick, brown ,fox", (const char*[]){"the","quick","brown","fox"}, 4);
+    result |= run_test("a,\"b,c\"", (const char*[]){"a","\"b,c\""}, 2);
+    result |= run_test("a=\"b,c\"", (const char*[]){"a=\"b,c\""}, 1);
+    result |= run_test("\"a", (const char*[]){"\"a"}, 1);
+    result |= run_test("a\"", (const char*[]){"a\""}, 1);
+    result |= run_test("a \"escape\\\"qu,ote\"", (const char*[]){"a \"escape\\\"qu,ote\""}, 1);
+    result |= run_test("a \"escape\\", (const char*[]){"a \"escape\\"}, 1);
+
+    return result;
 }
