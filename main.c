@@ -66,8 +66,7 @@ int enum_fields(const char *fv, const char **m, int *s) {
     return 0;
 }
 
-#define _TESTS
-#ifdef _TESTS
+#ifdef TESTS
 int fancy = 0;
 
 int run_enum_fields_test(const char *example, const char **expect, int count) {
