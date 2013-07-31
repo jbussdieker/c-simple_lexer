@@ -154,5 +154,7 @@ int main(int argc, char **argv) {
     result |= run_test("a \"escape\\\"qu,ote\"", (const char*[]){"a \"escape\\\"qu,ote\""}, 1);
     result |= run_test("a \"escape\\", (const char*[]){"a \"escape\\"}, 1);
 
+    result |= run_test("1, 2, a=\"b,c\"", (const char*[]){"1","2","a=\"b,c\""}, 3);
+
     return result;
 }
