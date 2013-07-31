@@ -99,7 +99,7 @@ int run_enum_fields_test(const char *example, const char **expect, int count) {
 }
 
 int run_test(const char *example, const char **expect, int count) {
-    printf("[....] Testing (%s)\r", example);
+    printf("Testing (%s)\n", example);
     if (run_enum_fields_test(example, expect, count)) {
 	printf("[\033[0;31mFAIL\033[00m]\n");
     } else {
