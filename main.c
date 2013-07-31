@@ -66,6 +66,10 @@ int enum_fields(const char *fv, const char **m, int *s) {
     return 0;
 }
 
+#define _TESTS
+#ifdef _TESTS
+int fancy = 0;
+
 int run_enum_fields_test(const char *example, const char **expect, int count) {
     const char *match;
     int size;
@@ -105,6 +109,9 @@ void print_literal(const char *msg) {
 }
 
 int run_test(const char *example, const char **expect, int count) {
+    if (fancy)
+	printf("[....] ");
+
     printf("Testing (");
     print_special("\"");
     print_literal(example);
@@ -119,7 +126,12 @@ int run_test(const char *example, const char **expect, int count) {
 	print_literal(expect[i]);
 	print_special("\"");
     }
-    printf("]\n");
+
+    printf("]");
+    if (fancy)
+	printf("\r");
+    else
+	printf("\n");
 
     if (run_enum_fields_test(example, expect, count)) {
 	printf("[\033[0;31mFAIL\033[00m]\n");
@@ -132,6 +144,8 @@ int run_test(const char *example, const char **expect, int count) {
 
 int main(int argc, char **argv) {
     int result = 0;
+
+    fancy = argc == 2 ? 0 : 1;
 
     result |= run_test("a", (const char*[]){"a"}, 1);
     result |= run_test(" a ", (const char*[]){"a"}, 1);
@@ -158,3 +172,4 @@ int main(int argc, char **argv) {
 
     return result;
 }
+#endif
