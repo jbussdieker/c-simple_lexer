@@ -18,24 +18,30 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 
 	if (strncmp(p, "w=\"", 3) == 0) {
 		p += 3;
-		for (e = p; *e != '\"' || e[-1] == '\\'; e++)
+		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
+		if (!*e)
+			return -1;
 		*param = p;
 		*s = (int)(e-p);
 		*type = M_WORD;
 		p = e + 1;
 	} else if (strncmp(p, "s=\"", 3) == 0) {
 		p += 3;
-		for (e = p; *e != '\"' || e[-1] == '\\'; e++)
+		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
+		if (!*e)
+			return -1;
 		*param = p;
 		*s = (int)(e-p);
 		*type = M_SUBSTRING;
 		p = e + 1;
 	} else if (strncmp(p, "b=\"", 3) == 0) {
 		p += 3;
-		for (e = p; *e != '\"' || e[-1] == '\\'; e++)
+		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
+		if (!*e)
+			return -1;
 		*param = p;
 		*s = (int)(e-p);
 		*type = M_BEGINNING;
@@ -100,7 +106,7 @@ int enum_fields(const char *fv, const char **m, int *s) {
 		if (*b == '\0')
 		    cur_state = scan_back;
 		else if (*b == '\\' && b[1] != '\0')
-		    b += 2;
+		    b++;
 		else if (*b == '"')
 		    cur_state = scan;
 		break;
@@ -258,7 +264,7 @@ int run_enum_fields_test(const char *example, const char **expect, int count) {
 	    printf("\nERROR: Too many matches\n\n");
 	    return 1;
 	} else if (strlen(expect[i]) != size) {
-	    printf("\nERROR: Expected (%.*s) == (%s)\n\n", size, match, expect[i]);
+	    printf("\nERROR: Expected (%.*s) length %d == (%s) length %zu\n\n", size, match, size, expect[i], strlen(expect[i]));
 	    return 1;
 	} else if (memcmp(match, expect[i], size)) {
 	    printf("\nERROR: Expected (%.*s) == (%s)\n\n", size, match, expect[i]);
@@ -285,6 +291,8 @@ int run_enum_matchers_test(const char *example, int *expect_type, const char **e
     int i = 0;
 
     while (read = enum_matchers(example + offset, &type, &match, &size)) {
+	if (read < 0)
+	    break;
 	if (i >= count) {
 	    printf("\nERROR: Too many matches\n\n");
 	    return 1;
@@ -475,23 +483,19 @@ int main(int argc, char **argv) {
     result |= run_matcher_test(";b=\"foo\"", (int[]){M_BEGINNING}, (const char*[]){"foo"}, 1);
     result |= run_matcher_test(";c", (int[]){M_CASE}, (const char*[]){""}, 1);
     result |= run_matcher_test(";n", (int[]){M_NOT}, (const char*[]){""}, 1);
-
     result |= run_matcher_test(";c;w=\"foo\"", (int[]){M_CASE, M_WORD}, (const char*[]){"", "foo"}, 2);
     result |= run_matcher_test(";n;s=\"foo\"", (int[]){M_NOT, M_SUBSTRING}, (const char*[]){"", "foo"}, 2);
-
     result |= run_matcher_test(";w=\"foo=\\\"bar\\\"\"", (int[]){M_WORD}, (const char*[]){"foo=\\\"bar\\\""}, 1);
-
     result |= run_matcher_test(";n;c;w=\"a\";s=\"b\";b=\"c\"", (int[]){M_NOT, M_CASE, M_WORD, M_SUBSTRING, M_BEGINNING}, (const char*[]){"", "", "a", "b", "c"}, 5);
+    result |= run_matcher_test(";w=\"a", (int[]){}, (const char*[]){}, 0);
 
     printf("\n * ENUM FIELDS * \n");
     result |= run_field_test("a", (const char*[]){"a"}, 1);
     result |= run_field_test(" a ", (const char*[]){"a"}, 1);
-
     result |= run_field_test("a,b", (const char*[]){"a","b"}, 2);
     result |= run_field_test(" a,b ", (const char*[]){"a","b"}, 2);
     result |= run_field_test(",a,b,", (const char*[]){"a","b"}, 2);
     result |= run_field_test(" ,a,b, ", (const char*[]){"a","b"}, 2);
-
     result |= run_field_test("hello world, it's me", (const char*[]){"hello world","it's me"}, 2);
     result |= run_field_test(" the quick brown fox ", (const char*[]){"the quick brown fox"}, 1);
     result |= run_field_test(" the,quick ,brown, fox ", (const char*[]){"the","quick","brown","fox"}, 4);
@@ -504,8 +508,8 @@ int main(int argc, char **argv) {
     result |= run_field_test("a\"", (const char*[]){"a\""}, 1);
     result |= run_field_test("a \"escape\\\"qu,ote\"", (const char*[]){"a \"escape\\\"qu,ote\""}, 1);
     result |= run_field_test("a \"escape\\", (const char*[]){"a \"escape\\"}, 1);
-
     result |= run_field_test("1, 2, a=\"b,c\"", (const char*[]){"1","2","a=\"b,c\""}, 3);
+    result |= run_field_test("\\\"a\\\"", (const char*[]){"\\\"a\\\""}, 1);
 
     printf("\n * MATCHER FUNCTIONS * \n");
     result |= run_matcher_function_test(&word_matcher, "foo", "foo", 0, 1);
