@@ -187,6 +187,8 @@ int unescape(char *dst, const char *src, int len) {
 			i++;
 			break;
 		    default:
+			dst[j++] = '\\';
+			dst[j] = src[i];
 			break;
 		}
 		break;
@@ -532,6 +534,7 @@ int main(int argc, char **argv) {
     result |= run_test(";w=\"a\";n;w=\"b\"", "a,b", 0);
     result |= run_test(";w=\"\\\"a\\\"\"", "\"a\"", 1);
     result |= run_test(";w=\"\\\"a\\\"\"", "\"a\"", 1);
+    result |= run_test(";w=\"\\a\"", "\\a", 1);
 
     return result;
 }
