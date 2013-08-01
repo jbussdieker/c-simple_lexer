@@ -16,3 +16,22 @@ while (read = enum_fields(example + offset, &match, &size)) {
     offset += read;
 }
 ```
+
+## enum_fields
+
+```c
+int enum_fields(const char *fv, const char **m, int *s)
+```
+
+Find the next field value within a field value list.
+
+### Returns
+
+* 0 for no match
+* > 0 to indicate the offset the match was found at
+
+### Parameters
+
+* fv: String representing the field values.
+* m: (Output) String to hold the start of the field value that was found.
+* s: (Output) The size of the field that was found.
