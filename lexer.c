@@ -6,6 +6,7 @@
 #define M_BEGINNING	3
 #define M_CASE		4
 #define M_NOT		5
+#define M_PARAMETER	6
 
 int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 	const char *p = matcher;
@@ -46,6 +47,16 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 		*s = (int)(e-p);
 		*type = M_BEGINNING;
 		p = e + 1;
+	} else if (strncmp(p, "p=\"", 3) == 0) {
+		p += 3;
+		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
+			continue;
+		if (!*e)
+			return -1;
+		*param = p;
+		*s = (int)(e-p);
+		*type = M_PARAMETER;
+		p = e + 1;
 	} else if (*p == 'c') {
 		*s = 0;
 		*type = M_CASE;
@@ -62,123 +73,142 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 }
 
 int enum_fields(const char *fv, const char **m, int *s) {
-    const char *f, *b;
-    enum state {
-	start,
-	skip_space,
-	scan,
-	scan_quote,
-	scan_back,
-	done,
-	end
-    } cur_state = start;
+	const char *f, *b;
+	enum state {
+		start,
+		skip_space,
+		scan,
+		scan_quote,
+		scan_back,
+		done,
+		end
+	} cur_state = start;
 
-    do {
-	switch (cur_state) {
-	    case start:
-		f = fv;
-		cur_state = skip_space;
-		break;
-	    case skip_space:
-		if (*f == '\0')
-		    cur_state = end;
-		else if (*f == ' ' || *f == ',')
-		    f++;
-		else if (*f == '"') {
-		    b = f;
-		    cur_state = scan_quote;
-		} else {
-		    b = f;
-		    cur_state = scan;
+	do {
+		switch (cur_state) {
+			case start:
+				f = fv;
+				cur_state = skip_space;
+				break;
+			case skip_space:
+				if (*f == '\0')
+					cur_state = end;
+				else if (*f == ' ' || *f == ',')
+					f++;
+				else if (*f == '"') {
+					b = f;
+					cur_state = scan_quote;
+				} else {
+					b = f;
+					cur_state = scan;
+				}
+				break;
+			case scan:
+				b++;
+				if (*b == '\0')
+					cur_state = scan_back;
+				else if (*b == '"')
+					cur_state = scan_quote;
+				else if (*b == ',')
+					cur_state = scan_back;
+				break;
+			case scan_quote:
+				b++;
+				if (*b == '\0')
+					cur_state = scan_back;
+				else if (*b == '\\' && b[1] != '\0')
+					b++;
+				else if (*b == '"')
+					cur_state = scan;
+				break;
+			case scan_back:
+				b--;
+				if (*b != ' ')
+					cur_state = done;
+				break;
+			case done:
+				*m = f;
+				*s = (int)(b-f)+1;
+				return b - fv + 1;
+				break;
 		}
-		break;
-	    case scan:
-		b++;
-		if (*b == '\0')
-		    cur_state = scan_back;
-		else if (*b == '"')
-		    cur_state = scan_quote;
-		else if (*b == ',')
-		    cur_state = scan_back;
-		break;
-	    case scan_quote:
-		b++;
-		if (*b == '\0')
-		    cur_state = scan_back;
-		else if (*b == '\\' && b[1] != '\0')
-		    b++;
-		else if (*b == '"')
-		    cur_state = scan;
-		break;
-	    case scan_back:
-		b--;
-		if (*b != ' ')
-		    cur_state = done;
-		break;
-	    case done:
-		*m = f;
-		*s = (int)(b-f)+1;
-		return b - fv + 1;
-		break;
-	}
-    } while (cur_state != end);
+	} while (cur_state != end);
 
-    return 0;
+	return 0;
 }
 
 int cmp_func(const char *str1, const char *str2, int size, int case_sensitive) {
-  if (case_sensitive == 1)
-    return strncmp(str1, str2, size);
-  else
-    return strncasecmp(str1, str2, size);
+      if (case_sensitive == 1)
+	    return strncmp(str1, str2, size);
+      else
+	    return strncasecmp(str1, str2, size);
 }
 
 int word_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
-    int read, size, offset = 0;
-    const char *match;
+	int read, size, offset = 0;
+	const char *match;
 
-    while (read = enum_fields(fv + offset, &match, &size)) {
-	if (ps == size) {
-	    if (cmp_func(match, p, size, case_sensitive) == 0) {
-		return 1;
-	    }
+	while (read = enum_fields(fv + offset, &match, &size)) {
+		if (ps == size) {
+			if (cmp_func(match, p, size, case_sensitive) == 0) {
+				return 1;
+			}
+		}
+		offset += read;
 	}
-	offset += read;
-    }
-    return 0;
+	return 0;
 }
 
 int substring_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
-    int read, size, offset = 0;
-    const char *match;
+	int read, size, offset = 0;
+	const char *match;
 
-    while (read = enum_fields(fv + offset, &match, &size)) {
-	if (strlen(p) <= size) {
-	    const char *s;
-	    for (s = match; s <= match + size - ps; s++) {
-		if (cmp_func(s, p, ps, case_sensitive) == 0) {
-		    return 1;
+	while (read = enum_fields(fv + offset, &match, &size)) {
+		if (strlen(p) <= size) {
+			const char *s;
+			for (s = match; s <= match + size - ps; s++) {
+				if (cmp_func(s, p, ps, case_sensitive) == 0) {
+					return 1;
+				}
+			}
 		}
-	    }
+		offset += read;
 	}
-	offset += read;
-    }
-    return 0;
+	return 0;
 }
 
 int beginning_substring_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
-    int read, size, offset = 0;
-    const char *match;
+	int read, size, offset = 0;
+	const char *match;
 
-    while (read = enum_fields(fv + offset, &match, &size)) {
-	if (ps <= size) {
-	    if (cmp_func(match, p, ps, case_sensitive) == 0) {
-		return 1;
-	    }
+	while (read = enum_fields(fv + offset, &match, &size)) {
+		if (ps <= size) {
+			if (cmp_func(match, p, ps, case_sensitive) == 0) {
+				return 1;
+			}
+		}
+		offset += read;
 	}
-	offset += read;
-    }
-    return 0;
+	return 0;
+}
+
+int parameter_prefix_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
+	int read, size, offset = 0;
+	const char *match;
+
+	while (read = enum_fields(fv + offset, &match, &size)) {
+		if (ps <= size) {
+			if (cmp_func(match, p, ps, case_sensitive) == 0) {
+				const char *r;
+				for (r = match + ps; r < match + size && *r == ' '; r++)
+					continue;
+				if (*r == ';' || r == match + size)
+					return 1;
+			}
+		}
+		offset += read;
+	}
+	return 0;
 }
 
 int unescape(char *dst, const char *src, int len) {
@@ -355,6 +385,12 @@ int run_matcher_test(const char *example, int *expect_type, const char **expect_
 	    case M_NOT:
 		printf(":not");
 		break;
+	    case M_PARAMETER:
+		printf(":parameter");
+		break;
+	    default:
+		printf(":unknown");
+		break;
 	}
         printf(" => ");
 	print_special("\"");
@@ -421,6 +457,8 @@ int run_matcher_function_test(int (*functionPtr)(const char *, const char *, int
 	printf("(substring_matcher): ");
     } else if (functionPtr == &beginning_substring_matcher) {
 	printf("(beginning_substring_matcher): ");
+    } else if (functionPtr == &parameter_prefix_matcher) {
+	printf("(parameter_prefix_matcher): ");
     }
 
     printf("Testing that ");
@@ -483,6 +521,7 @@ int main(int argc, char **argv) {
     result |= run_matcher_test(";b=\"foo\"", (int[]){M_BEGINNING}, (const char*[]){"foo"}, 1);
     result |= run_matcher_test(";c", (int[]){M_CASE}, (const char*[]){""}, 1);
     result |= run_matcher_test(";n", (int[]){M_NOT}, (const char*[]){""}, 1);
+    result |= run_matcher_test(";p=\"foo\"", (int[]){M_PARAMETER}, (const char*[]){"foo"}, 1);
     result |= run_matcher_test(";c;w=\"foo\"", (int[]){M_CASE, M_WORD}, (const char*[]){"", "foo"}, 2);
     result |= run_matcher_test(";n;s=\"foo\"", (int[]){M_NOT, M_SUBSTRING}, (const char*[]){"", "foo"}, 2);
     result |= run_matcher_test(";w=\"foo=\\\"bar\\\"\"", (int[]){M_WORD}, (const char*[]){"foo=\\\"bar\\\""}, 1);
@@ -533,15 +572,27 @@ int main(int argc, char **argv) {
     result |= run_matcher_function_test(&beginning_substring_matcher, "ooba", "foobar", 0, 0);
     result |= run_matcher_function_test(&beginning_substring_matcher, "bar", "foobar", 0, 0);
 
+    result |= run_matcher_function_test(&parameter_prefix_matcher, "foobar", "foobar", 0, 1);
+    result |= run_matcher_function_test(&parameter_prefix_matcher, "foobar", "foobar; true", 0, 1);
+    result |= run_matcher_function_test(&parameter_prefix_matcher, "foobar", "foobar  ; true", 0, 1);
+    result |= run_matcher_function_test(&parameter_prefix_matcher, "foo", "foobar; false", 0, 0);
+    result |= run_matcher_function_test(&parameter_prefix_matcher, "ooba", "foobar; x=2", 0, 0);
+    result |= run_matcher_function_test(&parameter_prefix_matcher, "bar", "foobar", 0, 0);
+
     printf("\n * MATCHERS * \n");
     result |= run_test(";w=\"a\"", "a", 1);
     result |= run_test(";w=\"a\"", "b", 0);
     result |= run_test(";c;w=\"a\"", "A", 0);
     result |= run_test(";n;w=\"a\"", "b", 1);
-    result |= run_test(";w=\"a\";n;w=\"b\"", "a,b", 0);
+    result |= run_test(";w=\"a\";n;w=\"b\"", "a, c", 1);
+    result |= run_test(";w=\"a\";n;w=\"b\"", "a, b", 0);
     result |= run_test(";w=\"\\\"a\\\"\"", "\"a\"", 1);
     result |= run_test(";w=\"\\\"a\\\"\"", "\"a\"", 1);
     result |= run_test(";w=\"\\a\"", "\\a", 1);
+    result |= run_test(";p=\"text/html\"", "text/html", 1);
+    result |= run_test(";p=\"text/html\"", "text/html; q=0.5", 1);
+    result |= run_test(";p=\"text/html\"", "text/html;q=0.1", 1);
+    result |= run_test(";p=\"text/html\"", "text/html; foo=\"bar\"", 1);
 
     return result;
 }
