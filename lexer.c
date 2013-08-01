@@ -120,6 +120,127 @@ int enum_fields(const char *fv, const char **m, int *s) {
     return 0;
 }
 
+int cmp_func(const char *str1, const char *str2, int size, int case_sensitive) {
+  if (case_sensitive == 1)
+    return strncmp(str1, str2, size);
+  else
+    return strncasecmp(str1, str2, size);
+}
+
+int word_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
+    int read, size, offset = 0;
+    const char *match;
+
+    while (read = enum_fields(fv + offset, &match, &size)) {
+	if (ps == size) {
+	    if (cmp_func(match, p, size, case_sensitive) == 0) {
+		return 1;
+	    }
+	}
+	offset += read;
+    }
+    return 0;
+}
+
+int substring_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
+    int read, size, offset = 0;
+    const char *match;
+
+    while (read = enum_fields(fv + offset, &match, &size)) {
+	if (strlen(p) <= size) {
+	    const char *s;
+	    for (s = match; s <= match + size - ps; s++) {
+		if (cmp_func(s, p, ps, case_sensitive) == 0) {
+		    return 1;
+		}
+	    }
+	}
+	offset += read;
+    }
+    return 0;
+}
+
+int beginning_substring_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
+    int read, size, offset = 0;
+    const char *match;
+
+    while (read = enum_fields(fv + offset, &match, &size)) {
+	if (ps <= size) {
+	    if (cmp_func(match, p, ps, case_sensitive) == 0) {
+		return 1;
+	    }
+	}
+	offset += read;
+    }
+    return 0;
+}
+
+int unescape(char *dst, const char *src, int len) {
+    int i, j;
+    i = j = 0;
+    while (i < len) {
+        switch (src[i]) {
+	    case '\\':
+		switch(src[++i]) {
+		    case '\"':
+			dst[j++] = '\"';
+			i++;
+			break;
+		    default:
+			break;
+		}
+		break;
+	    default:
+		dst[j] = src[i];
+		i++;
+		j++;
+		break;
+	}
+    }
+    return j;
+}
+
+int matcher(const char *m, const char *f) {
+    int mr, fr; // read sizes
+    int mo = 0, fo = 0; // offsets
+    int fs, ms; // sizes
+    int type;
+    const char *match, *field;
+    int not_flag = 0;
+    int case_flag = 0;
+
+    while (mr = enum_matchers(m + mo, &type, &match, &ms)) {
+	int matched = 1;
+	char *m = malloc(ms+1);
+	ms = unescape(m,match,ms);
+	switch(type) {
+	    case M_WORD:
+		if (!(word_matcher(m, f, ms, case_flag) ^ not_flag))
+		    matched = 0;
+		break;
+	    case M_SUBSTRING:
+		if (!(substring_matcher(m, f, ms, case_flag) ^ not_flag))
+		    matched = 0;
+		break;
+	    case M_BEGINNING:
+		if (!(beginning_substring_matcher(m, f, ms, case_flag) ^ not_flag))
+		    matched = 0;
+		break;
+	    case M_CASE:
+		case_flag = 1;
+		break;
+	    case M_NOT:
+		not_flag = 1;
+		break;
+	}
+	free(m);
+	if (!matched)
+	    return 0;
+	mo += mr;
+    }
+    return 1;
+}
+
 #ifdef TESTS
 int fancy = 0;
 
@@ -280,12 +401,73 @@ int run_field_test(const char *example, const char **expect, int count) {
     }
 }
 
+int run_matcher_function_test(int (*functionPtr)(const char *, const char *, int, int), const char *p, const char *fv, int case_sensitive, int expect) {
+    if (fancy)
+	printf("[....] ");
+
+    if (functionPtr == &word_matcher) {
+	printf("(word_matcher): ");
+    } else if (functionPtr == &substring_matcher) {
+	printf("(substring_matcher): ");
+    } else if (functionPtr == &beginning_substring_matcher) {
+	printf("(beginning_substring_matcher): ");
+    }
+
+    printf("Testing that ");
+    print_special("\"");
+    print_literal(p);
+    print_special("\"");
+    printf(" %s ", expect == 1 ? "matches" : "doesn't match");
+    print_special("\"");
+    print_literal(fv);
+    print_special("\"");
+    printf(" %s", case_sensitive == 0 ? "" : "(CASE SENSITIVE)");
+    if (fancy)
+	printf("\r");
+    else
+	printf("\n");
+
+    if (functionPtr(p, fv, strlen(p), case_sensitive) != expect) {
+	printf("[\033[0;31mFAIL\033[00m]\n");
+	return 1;
+    } else {
+	printf("[\033[0;32mPASS\033[00m]\n");
+	return 0;
+    }
+}
+
+int run_test(char *m, char *v, int expect) {
+    if (fancy)
+	printf("[....] ");
+
+    printf("Testing that ");
+    print_special("\"");
+    print_literal(m);
+    print_special("\"");
+    printf(" %s ", expect == 1 ? "matches" : "doesn't match");
+    print_special("\"");
+    print_literal(v);
+    print_special("\"");
+    if (fancy)
+	printf("\r");
+    else
+	printf("\n");
+
+    if (matcher(m, v) != expect) {
+	printf("[\033[0;31mFAIL\033[00m]\n");
+	return 1;
+    } else {
+	printf("[\033[0;32mPASS\033[00m]\n");
+	return 0;
+    }
+}
+
 int main(int argc, char **argv) {
     int result = 0;
 
     fancy = argc == 2 ? 0 : 1;
 
-    printf("\n * MATCHER TESTS *\n");
+    printf("\n * ENUM MATCHERS *\n");
     result |= run_matcher_test(";w=\"foo\"", (int[]){M_WORD}, (const char*[]){"foo"}, 1);
     result |= run_matcher_test(";s=\"foo\"", (int[]){M_SUBSTRING}, (const char*[]){"foo"}, 1);
     result |= run_matcher_test(";b=\"foo\"", (int[]){M_BEGINNING}, (const char*[]){"foo"}, 1);
@@ -299,7 +481,7 @@ int main(int argc, char **argv) {
 
     result |= run_matcher_test(";n;c;w=\"a\";s=\"b\";b=\"c\"", (int[]){M_NOT, M_CASE, M_WORD, M_SUBSTRING, M_BEGINNING}, (const char*[]){"", "", "a", "b", "c"}, 5);
 
-    printf("\n * FIELD TESTS * \n");
+    printf("\n * ENUM FIELDS * \n");
     result |= run_field_test("a", (const char*[]){"a"}, 1);
     result |= run_field_test(" a ", (const char*[]){"a"}, 1);
 
@@ -322,6 +504,34 @@ int main(int argc, char **argv) {
     result |= run_field_test("a \"escape\\", (const char*[]){"a \"escape\\"}, 1);
 
     result |= run_field_test("1, 2, a=\"b,c\"", (const char*[]){"1","2","a=\"b,c\""}, 3);
+
+    printf("\n * MATCHER FUNCTIONS * \n");
+    result |= run_matcher_function_test(&word_matcher, "foo", "foo", 0, 1);
+    result |= run_matcher_function_test(&word_matcher, "foo", "Foo", 0, 1);
+    result |= run_matcher_function_test(&word_matcher, "foo", "Foo", 1, 0);
+    result |= run_matcher_function_test(&word_matcher, "foo", "foo,bar", 0, 1);
+    result |= run_matcher_function_test(&word_matcher, "foo", "bar,foo,bar", 0, 1);
+    result |= run_matcher_function_test(&word_matcher, "foo", "foobar", 0, 0);
+    result |= run_matcher_function_test(&word_matcher, "\"foo,bar\"", "bar,\"foo,bar\",bar", 0, 1);
+
+    result |= run_matcher_function_test(&substring_matcher, "foobar", "foobar", 0, 1);
+    result |= run_matcher_function_test(&substring_matcher, "foo", "foobar", 0, 1);
+    result |= run_matcher_function_test(&substring_matcher, "ooba", "foobar", 0, 1);
+    result |= run_matcher_function_test(&substring_matcher, "bar", "foobar", 0, 1);
+
+    result |= run_matcher_function_test(&beginning_substring_matcher, "foobar", "foobar", 0, 1);
+    result |= run_matcher_function_test(&beginning_substring_matcher, "foo", "foobar", 0, 1);
+    result |= run_matcher_function_test(&beginning_substring_matcher, "ooba", "foobar", 0, 0);
+    result |= run_matcher_function_test(&beginning_substring_matcher, "bar", "foobar", 0, 0);
+
+    printf("\n * MATCHERS * \n");
+    result |= run_test(";w=\"a\"", "a", 1);
+    result |= run_test(";w=\"a\"", "b", 0);
+    result |= run_test(";c;w=\"a\"", "A", 0);
+    result |= run_test(";n;w=\"a\"", "b", 1);
+    result |= run_test(";w=\"a\";n;w=\"b\"", "a,b", 0);
+    result |= run_test(";w=\"\\\"a\\\"\"", "\"a\"", 1);
+    result |= run_test(";w=\"\\\"a\\\"\"", "\"a\"", 1);
 
     return result;
 }
