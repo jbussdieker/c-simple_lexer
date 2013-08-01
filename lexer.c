@@ -487,7 +487,10 @@ int main(int argc, char **argv) {
     result |= run_matcher_test(";n;s=\"foo\"", (int[]){M_NOT, M_SUBSTRING}, (const char*[]){"", "foo"}, 2);
     result |= run_matcher_test(";w=\"foo=\\\"bar\\\"\"", (int[]){M_WORD}, (const char*[]){"foo=\\\"bar\\\""}, 1);
     result |= run_matcher_test(";n;c;w=\"a\";s=\"b\";b=\"c\"", (int[]){M_NOT, M_CASE, M_WORD, M_SUBSTRING, M_BEGINNING}, (const char*[]){"", "", "a", "b", "c"}, 5);
+
     result |= run_matcher_test(";w=\"a", (int[]){}, (const char*[]){}, 0);
+    result |= run_matcher_test(";w=\"a\";", (int[]){M_WORD}, (const char*[]){"a"}, 1);
+    result |= run_matcher_test(";", (int[]){}, (const char*[]){}, 0);
 
     printf("\n * ENUM FIELDS * \n");
     result |= run_field_test("a", (const char*[]){"a"}, 1);
