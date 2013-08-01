@@ -212,30 +212,30 @@ int parameter_prefix_matcher(const char *p, const char *fv, int ps, int case_sen
 }
 
 int unescape(char *dst, const char *src, int len) {
-    int i, j;
-    i = j = 0;
-    while (i < len) {
-        switch (src[i]) {
-	    case '\\':
-		switch(src[++i]) {
-		    case '\"':
-			dst[j++] = '\"';
-			i++;
-			break;
-		    default:
-			dst[j++] = '\\';
-			dst[j] = src[i];
-			break;
+	int i, j;
+	i = j = 0;
+	while (i < len) {
+		switch (src[i]) {
+			case '\\':
+				switch(src[++i]) {
+					case '\"':
+						dst[j++] = '\"';
+						i++;
+						break;
+					default:
+						dst[j++] = '\\';
+						dst[j] = src[i];
+						break;
+				}
+				break;
+			default:
+				dst[j] = src[i];
+				i++;
+				j++;
+				break;
 		}
-		break;
-	    default:
-		dst[j] = src[i];
-		i++;
-		j++;
-		break;
 	}
-    }
-    return j;
+	return j;
 }
 
 int matcher(const char *m, const char *f) {
@@ -484,7 +484,118 @@ int run_matcher_function_test(int (*functionPtr)(const char *, const char *, int
     }
 }
 
+char *escape(char * s, char * t) {
+    int i, j;
+    i = j = 0;
+    
+    while ( t[i] ) {
+        
+        /*  Translate the special character, if we have one  */
+        
+        switch( t[i] ) {
+        case '\n':
+            s[j++] = '\\';
+            s[j] = 'n';
+            break;
+            
+        case '\t':
+            s[j++] = '\\';
+            s[j] = 't';
+            break;
+            
+        case '\a':
+            s[j++] = '\\';
+            s[j] = 'a';
+            break;
+            
+        case '\b':
+            s[j++] = '\\';
+            s[j] = 'b';
+            break;
+            
+        case '\f':
+            s[j++] = '\\';
+            s[j] = 'f';
+            break;
+            
+        case '\r':
+            s[j++] = '\\';
+            s[j] = 'r';
+            break;
+            
+        case '\v':
+            s[j++] = '\\';
+            s[j] = 'v';
+            break;
+            
+        case '\\':
+            s[j++] = '\\';
+            s[j] = '\\';
+            break;
+            
+        case '\"':
+            s[j++] = '\\';
+            s[j] = '\"';
+            break;
+            
+        default:
+            
+            /*  This is not a special character, so just copy it  */
+            
+            s[j] = t[i];
+            break;
+        }
+        ++i;
+        ++j;
+    }
+    s[j] = t[i];    /*  Don't forget the null character  */
+    return s;
+}
+
+void gen_varnish_test(char *m, char *v, int expect) {
+    static testnum = 0;
+    testnum++;
+    char filename[256];
+    char buf[256];
+
+    sprintf(filename, "x%05d.vtc", testnum);
+    FILE *fp = fopen(filename, "w+");
+    if (fp == NULL) {
+	printf("ERROR: Couldn't open file\n");
+	return;
+    }
+    fprintf(fp, "varnishtest \"Test Key matcher functionality\"\n");
+    fprintf(fp, "\n");
+    fprintf(fp, "server s1 {\n");
+    fprintf(fp, "	rxreq\n");
+    fprintf(fp, "	txresp -hdr \"Key: Foobar%s\"\n", escape(buf, m));
+    fprintf(fp, "	rxreq\n");
+    fprintf(fp, "	txresp -hdr \"Key: Foobar%s\"\n", escape(buf, m));
+    fprintf(fp, "} -start\n");
+    fprintf(fp, "\n");
+    fprintf(fp, "varnish v1 -vcl+backend {} -start\n");
+    fprintf(fp, "\n");
+    fprintf(fp, "client c1 {\n");
+    fprintf(fp, "	txreq -hdr \"Foobar: %s\"\n", escape(buf, v));
+    fprintf(fp, "	rxresp\n");
+    fprintf(fp, "	expect resp.status == 200\n");
+    fprintf(fp, "	expect resp.http.X-Varnish == \"1001\"\n");
+    fprintf(fp, "\n");
+    fprintf(fp, "	txreq -hdr \"Foobar: %s\"\n", escape(buf, v));
+    fprintf(fp, "	rxresp\n");
+    fprintf(fp, "	expect resp.status == 200\n");
+    if (expect == 1)
+	fprintf(fp, "	expect resp.http.X-Varnish == \"1003 1002\"\n");
+    else
+	fprintf(fp, "	expect resp.http.X-Varnish == \"1003\"\n");
+    fprintf(fp, "} -run\n");
+
+    fclose(fp);
+}
+
 int run_test(char *m, char *v, int expect) {
+    gen_varnish_test(m, v, expect);
+
     if (fancy)
 	printf("[....] ");
 
@@ -581,7 +692,17 @@ int main(int argc, char **argv) {
 
     printf("\n * MATCHERS * \n");
     result |= run_test(";w=\"a\"", "a", 1);
+    result |= run_test(";b=\"a\"", "Apple", 1);
+    result |= run_test(";b=\"a\"", "ardvark", 1);
+    result |= run_test(";c;b=\"a\"", "Apple", 0);
+    result |= run_test(";c;b=\"a\"", "ardvark", 1);
+    result |= run_test(";w=\"a\";w=\"b\";w=\"c\"", "c,a,b", 1);
+    result |= run_test(";w=\"a\"", "apple,a", 1);
     result |= run_test(";w=\"a\"", "b", 0);
+    result |= run_test(";w=\"a\"", "a,b", 1);
+    result |= run_test(";w=\"a\"", "b,a", 1);
+    result |= run_test(";n;b=\"a\"", "car", 1);
+    result |= run_test(";n;b=\"a\"", "duck", 1);
     result |= run_test(";c;w=\"a\"", "A", 0);
     result |= run_test(";n;w=\"a\"", "b", 1);
     result |= run_test(";w=\"a\";n;w=\"b\"", "a, c", 1);
@@ -593,6 +714,8 @@ int main(int argc, char **argv) {
     result |= run_test(";p=\"text/html\"", "text/html; q=0.5", 1);
     result |= run_test(";p=\"text/html\"", "text/html;q=0.1", 1);
     result |= run_test(";p=\"text/html\"", "text/html; foo=\"bar\"", 1);
+
+    result |= run_test(";w=\"foo\";p=\"test\";b=\"win\";c;s=\"iNnInG\";n;w=\"bar\"", "foo,test;bar,wiNnInG", 1);
 
     return result;
 }
