@@ -1,12 +1,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#define M_WORD		1
-#define M_SUBSTRING	2
-#define M_BEGINNING	3
-#define M_CASE		4
-#define M_NOT		5
-#define M_PARAMETER	6
+#define M_WORD		    1
+#define M_SUBSTRING	    2
+#define M_BEGINNING	    3
+#define M_CASE		    4
+#define M_NOT		    5
+#define M_PARAMETER	    6
+#define M_PARAMETER_RANGE   7
 
 int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 	const char *p = matcher;
@@ -21,7 +22,7 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 		p += 3;
 		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
-		if (!*e)
+		if (*e != '\"')
 			return -1;
 		*param = p;
 		*s = (int)(e-p);
@@ -31,7 +32,7 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 		p += 3;
 		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
-		if (!*e)
+		if (*e != '\"')
 			return -1;
 		*param = p;
 		*s = (int)(e-p);
@@ -41,7 +42,7 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 		p += 3;
 		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
-		if (!*e)
+		if (*e != '\"')
 			return -1;
 		*param = p;
 		*s = (int)(e-p);
@@ -51,11 +52,25 @@ int enum_matchers(const char *matcher, int *type, const char **param, int *s) {
 		p += 3;
 		for (e = p; *e && (*e != '\"' || e[-1] == '\\'); e++)
 			continue;
-		if (!*e)
+		if (*e != '\"')
 			return -1;
 		*param = p;
 		*s = (int)(e-p);
 		*type = M_PARAMETER;
+		p = e + 1;
+	} else if (strncmp(p, "pr=", 3) == 0) {
+		p += 3;
+		for (e = p; *e && *e != '[' && *e != ';'; e++)
+			continue;
+		if (*e != '[')
+			return -1;
+		for (e = p; *e && *e != ']' && *e != ';'; e++)
+			continue;
+		if (*e != ']')
+			return -1;
+		*param = p;
+		*s = (int)(e-p) + 1;
+		*type = M_PARAMETER_RANGE;
 		p = e + 1;
 	} else if (*p == 'c') {
 		*s = 0;
@@ -211,6 +226,51 @@ int parameter_prefix_matcher(const char *p, const char *fv, int ps, int case_sen
 	return 0;
 }
 
+int parameter_range_matcher(const char *p, const char *fv, int ps, int case_sensitive) {
+	case_sensitive = 0; // Always case insensitive
+	int read, size, offset = 0;
+	const char *match;
+
+	int min = 99, max = 0;
+	int has_min = 1, has_max = 1;
+	char *x = p;
+	for (x = p; *x && *x != '['; x++)
+		continue;
+	char *prefix = x - 1;
+	ps = (int)(prefix - p) + 1;
+
+	if (strncmp(x, "[:", 2)) {
+		if (!sscanf(x, "[%d:", &min)) {
+			return 0;
+		} else
+			has_min = 0;
+	}
+	for (; *x && *x != ':'; x++)
+		continue;
+	if (strncmp(x, ":]", 2)) {
+		if (!sscanf(x, ":%d]", &max)) {
+			return 0;
+		} else
+			has_max = 0;
+	}
+
+	while (read = enum_fields(fv + offset, &match, &size)) {
+		if (ps <= size) {
+			if (cmp_func(match, p, ps, case_sensitive) == 0) {
+				if (match[ps] == '=') {
+					int value;
+					if (sscanf(match + ps + 1, "%d", &value)) {
+					    if ((has_min || (value >= min)) && (has_max || (value <= max)))
+						    return 1;
+					}
+				}
+			}
+		}
+		offset += read;
+	}
+	return 0;
+}
+
 int unescape(char *dst, const char *src, int len) {
 	int i, j;
 	i = j = 0;
@@ -262,6 +322,10 @@ int matcher(const char *m, const char *f) {
 		break;
 	    case M_BEGINNING:
 		if (!(beginning_substring_matcher(m, f, ms, case_flag) ^ not_flag))
+		    matched = 0;
+		break;
+	    case M_PARAMETER_RANGE:
+		if (!(parameter_range_matcher(m, f, ms, case_flag) ^ not_flag))
 		    matched = 0;
 		break;
 	    case M_CASE:
@@ -371,22 +435,25 @@ int run_matcher_test(const char *example, int *expect_type, const char **expect_
 	    printf(", ");
 	switch (expect_type[i]) {
 	    case M_WORD:
-		printf(":word");
+		printf(":w");
 		break;
 	    case M_SUBSTRING:
-		printf(":substring");
+		printf(":s");
 		break;
 	    case M_BEGINNING:
-		printf(":beginning");
+		printf(":b");
 		break;
 	    case M_CASE:
-		printf(":case");
+		printf(":c");
 		break;
 	    case M_NOT:
-		printf(":not");
+		printf(":n");
 		break;
 	    case M_PARAMETER:
-		printf(":parameter");
+		printf(":p");
+		break;
+	    case M_PARAMETER_RANGE:
+		printf(":pr");
 		break;
 	    default:
 		printf(":unknown");
@@ -459,6 +526,8 @@ int run_matcher_function_test(int (*functionPtr)(const char *, const char *, int
 	printf("(beginning_substring_matcher): ");
     } else if (functionPtr == &parameter_prefix_matcher) {
 	printf("(parameter_prefix_matcher): ");
+    } else if (functionPtr == &parameter_range_matcher) {
+	printf("(parameter_range_matcher): ");
     }
 
     printf("Testing that ");
@@ -633,6 +702,10 @@ int main(int argc, char **argv) {
     result |= run_matcher_test(";c", (int[]){M_CASE}, (const char*[]){""}, 1);
     result |= run_matcher_test(";n", (int[]){M_NOT}, (const char*[]){""}, 1);
     result |= run_matcher_test(";p=\"foo\"", (int[]){M_PARAMETER}, (const char*[]){"foo"}, 1);
+    result |= run_matcher_test(";pr=foo[1:2]", (int[]){M_PARAMETER_RANGE}, (const char*[]){"foo[1:2]"}, 1);
+    result |= run_matcher_test(";pr=foo[100:200]", (int[]){M_PARAMETER_RANGE}, (const char*[]){"foo[100:200]"}, 1);
+    result |= run_matcher_test(";pr=foo[1:2", (int[]){}, (const char*[]){}, 0);
+    result |= run_matcher_test(";pr=foo1:2]", (int[]){}, (const char*[]){}, 0);
     result |= run_matcher_test(";c;w=\"foo\"", (int[]){M_CASE, M_WORD}, (const char*[]){"", "foo"}, 2);
     result |= run_matcher_test(";n;s=\"foo\"", (int[]){M_NOT, M_SUBSTRING}, (const char*[]){"", "foo"}, 2);
     result |= run_matcher_test(";w=\"foo=\\\"bar\\\"\"", (int[]){M_WORD}, (const char*[]){"foo=\\\"bar\\\""}, 1);
@@ -690,6 +763,15 @@ int main(int argc, char **argv) {
     result |= run_matcher_function_test(&parameter_prefix_matcher, "ooba", "foobar; x=2", 0, 0);
     result |= run_matcher_function_test(&parameter_prefix_matcher, "bar", "foobar", 0, 0);
 
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[0:1]", "bar=0", 0, 1);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[0:1]", "bar=1", 0, 1);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[0:1]", "bar=2", 0, 0);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[:1]", "bar=-1", 0, 1);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[1:]", "bar=2", 0, 1);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[:1]", "bar=2", 0, 0);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[1:]", "bar=0", 0, 0);
+    result |= run_matcher_function_test(&parameter_range_matcher, "bar[20:30]", "bar=25", 0, 1);
+
     printf("\n * MATCHERS * \n");
     result |= run_test(";w=\"a\"", "a", 1);
     result |= run_test(";b=\"a\"", "Apple", 1);
@@ -714,6 +796,15 @@ int main(int argc, char **argv) {
     result |= run_test(";p=\"text/html\"", "text/html; q=0.5", 1);
     result |= run_test(";p=\"text/html\"", "text/html;q=0.1", 1);
     result |= run_test(";p=\"text/html\"", "text/html; foo=\"bar\"", 1);
+    result |= run_test(";pr=bar[20:30]", "bar=20", 1);
+    result |= run_test(";pr=bar[20:30]", "BAr=25", 1);
+    result |= run_test(";pr=bar[20:30]", "bar=30, baz=100", 1);
+    result |= run_test(";pr=bar[20:30]", "baz=10, bar=50, bar=10, bar=21", 1);
+    result |= run_test(";pr=bar[20:30]", "bar=19", 0);
+    result |= run_test(";pr=bar[20:30]", "bar=", 0);
+    result |= run_test(";pr=bar[20:30]", "bar=-30", 0);
+    result |= run_test(";pr=bar[20:30]", "thing=100", 0);
+    result |= run_test(";pr=bar[20:30]", "bar", 0);
 
     result |= run_test(";w=\"foo\";p=\"test\";b=\"win\";c;s=\"iNnInG\";n;w=\"bar\"", "foo,test;bar,wiNnInG", 1);
 
